@@ -12,8 +12,10 @@ speech-recognition training data. Open it on a phone or laptop:
 - `prompts.txt` holds the sentences to read, one per line
   (`id<TAB>sentence`). They are training-split transcripts from the
   [WAXAL](https://huggingface.co/datasets/google/WaxalNLP) Wolaytta corpus
-  (CC-BY-4.0, Google Research); no sentence from its validation or test
-  split is included.
+  (collected by Digital Umuganda; listed there as CC-BY-SA-4.0, and also
+  released as [Afrivoice Ethiopia](https://huggingface.co/datasets/DigitalUmuganda/Afrivoice_Ethiopia)).
+  No sentence from its validation or test split is included.
+  `prompts.txt` is shared under the same CC-BY-SA-4.0 license.
 
 Exports are merged into the dataset with
 `python -m wal_data merge-recordings` in the wolaytta-asr-data project.
