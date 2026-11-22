@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Voice of Wolaita Recorder</title>
+<style>
+/* Layout: one column; a big reading card is the whole screen while recording. */
+:root {
+  --bg: #f6f7f4; --surface: #ffffff; --ink: #1d2320; --muted: #5d6862;
+  --line: #d9ded8; --accent: #1f6f5c; --accent-ink: #ffffff;
+  --rec: #c4372d; --warn: #9a6a00; --warn-bg: #fff4d6; --ok: #2e7d4f;
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-read: "Noto Serif", Georgia, "Times New Roman", serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #131715; --surface: #1c221f; --ink: #e7ece8; --muted: #9aa6a0;
+    --line: #2f3833; --accent: #4fb396; --accent-ink: #0b1411; --rec: #ff6b5f;
+    --warn: #f0c35a; --warn-bg: #3a2f14; --ok: #6fcf97; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-ui);
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+           max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+main { max-width: 760px; margin: 0 auto; display: grid; gap: 20px; }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 16px; margin: 0 0 12px; }
+.sub { color: var(--muted); font-size: 13px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+input[type=text], select { font: inherit; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; min-width: 0; }
+.check { display: flex; gap: 10px; align-items: flex-start; color: var(--ink); font-size: 14px; }
+.check input { margin-top: 4px; width: 18px; height: 18px; flex: none; }
+button { font: inherit; font-weight: 600; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); padding: 10px 16px; cursor: pointer; min-height: 44px; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.rec { background: var(--rec); color: #fff; border-color: var(--rec); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.prompt { font-family: var(--font-read); font-size: clamp(22px, 5vw, 32px); line-height: 1.45;
+  margin: 8px 0 18px; text-wrap: pretty; overflow-wrap: anywhere; }
+.meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 13px;
+  font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+.meter { height: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.meter > div { height: 100%; width: 0; background: var(--ok); transition: width 60ms linear; }
+.status { min-height: 1.5em; font-size: 14px; }
+.status.warn { color: var(--warn); }
+.status.rec { color: var(--rec); font-weight: 600; }
+.notice { background: var(--warn-bg); color: var(--ink); border-radius: 10px; padding: 12px 14px; font-size: 14px; }
+.big { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.big button { min-height: 56px; font-size: 16px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.tablewrap { overflow-x: auto; }
+.keys { color: var(--muted); font-size: 12px; }
+kbd { font: 12px var(--font-ui); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+[hidden] { display: none !important; }
+@media (hover: none) { .keys { display: none; } }
+@media (prefers-reduced-motion: reduce) { .meter > div { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Voice of Wolaita Recorder</h1>
+    <span class="sub" id="deviceTag"></span>
+  </header>
+
+  <div class="notice" id="storageWarn" hidden>This browser can't save recordings between visits. Export before you close the page.</div>
+
+  <!-- 1. Home -->
+  <section id="home" class="card">
+    <h2>Sentences</h2>
+    <p class="sub">Load <code>prompts.txt</code> (made with <code>python -m wal_data prompts</code>): one sentence per line, optionally <code>id&lt;TAB&gt;sentence</code>.</p>
+    <div class="row">
+      <button id="siteLoad" hidden>Use this site's sentences</button>
+      <input type="file" id="promptFile" accept=".txt,text/plain">
+      <span id="promptInfo" class="sub">No sentences loaded.</span>
+    </div>
+  </section>
+
+  <section id="speakers" class="card">
+    <h2>Speakers on this device</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Speaker</th><th>Gender</th><th>Age</th><th>Area</th><th>Clips</th><th>Minutes</th><th>Public?</th></tr></thead>
+        <tbody id="speakerRows"><tr><td colspan="7" class="sub">No one recorded yet.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" id="newSpeakerBtn">New speaker</button>
+      <button id="exportBtn">Export all as zip</button>
+      <button id="clearBtn">Delete exported recordings…</button>
+    </div>
+    <div class="row" id="clearConfirm" hidden style="margin-top:10px">
+      <span class="status warn">Deletes every recording already exported from this browser. Keep the zip safe first.</span>
+      <button class="rec" id="clearYes">Delete them</button>
+      <button id="clearNo">Cancel</button>
+    </div>
+    <p class="sub" id="totals"></p>
+    <p class="status" id="homeStatus"></p>
+  </section>
+
+  <!-- 2. New speaker + consent -->
+  <section id="speakerForm" class="card" hidden>
+    <h2>New speaker</h2>
+    <div class="grid2">
+      <label>Gender
+        <select id="gender"><option value="">Choose…</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other / prefer not to say</option></select>
+      </label>
+      <label>Age range
+        <select id="age"><option value="">Choose…</option><option>18-24</option><option>25-34</option><option>35-49</option><option>50-64</option><option>65+</option></select>
+      </label>
+      <label>Home area (town or woreda)
+        <input type="text" id="area" placeholder="e.g. Sodo, Boloso Sore" autocomplete="off">
+      </label>
+    </div>
+    <div style="display:grid;gap:10px;margin-top:16px">
+      <label class="check"><input type="checkbox" id="consentResearch">
+        <span>I agree that my voice recordings are used to train and test Wolaytta speech recognition for research. I can ask for them to be deleted at any time.</span></label>
+      <label class="check"><input type="checkbox" id="consentPublic">
+        <span>Optional: I also agree that my recordings may be published in an open dataset, without my name.</span></label>
+    </div>
+    <p class="sub">No names are stored. Each person is saved as a code like <span id="nextCode"></span>.</p>
+    <div class="row">
+      <button class="primary" id="startBtn" disabled>Start recording</button>
+      <button id="cancelSpeaker">Cancel</button>
+    </div>
+  </section>
+
+  <!-- 3. Recording -->
+  <section id="studio" class="card" hidden>
+    <div class="meta"><span id="studioSpeaker"></span><span id="studioCount"></span></div>
+    <p class="prompt" id="promptText"></p>
+    <div class="meter" aria-hidden="true"><div id="meterBar"></div></div>
+    <p class="status" id="studioStatus" role="status"></p>
+    <audio id="playback" controls hidden style="width:100%"></audio>
+    <div class="big" style="margin-top:12px">
+      <button class="rec" id="recBtn">Record</button>
+      <button id="keepBtn" class="primary" disabled>Keep &amp; next</button>
+      <button id="redoBtn" disabled>Record again</button>
+      <button id="skipBtn">Skip sentence</button>
+    </div>
+    <div class="row" style="margin-top:14px;justify-content:space-between">
+      <span class="keys"><kbd>Space</kbd> record / stop · <kbd>Enter</kbd> keep · <kbd>R</kbd> again · <kbd>S</kbd> skip</span>
+      <button id="doneBtn">Finish speaker</button>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---------- storage: IndexedDB, with an in-memory fallback ----------
+  const mem = { clips: new Map(), speakers: new Map(), settings: new Map() };
+  let db = null;
+  function openDb() {
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open("wolaita-recorder", 1);
+        req.onupgradeneeded = () => {
+          const d = req.result;
+          d.createObjectStore("clips", { keyPath: "id" });
+          d.createObjectStore("speakers", { keyPath: "id" });
+          d.createObjectStore("settings");
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+      } catch (e) { resolve(null); }
+    });
+  }
+  function tx(store, mode, fn) {
+    if (!db) return Promise.resolve(fn(null));
+    return new Promise((resolve, reject) => {
+      const t = db.transaction(store, mode);
+      const out = fn(t.objectStore(store));
+      t.oncomplete = () => resolve(out && out.result !== undefined ? out.result : out);
+      t.onerror = () => reject(t.error);
+    });
+  }
+  const put = (store, value, key) => db
+    ? tx(store, "readwrite", s => s.put(value, key))
+    : (mem[store].set(key ?? value.id, value), Promise.resolve());
+  const del = (store, key) => db
+    ? tx(store, "readwrite", s => s.delete(key))
+    : (mem[store].delete(key), Promise.resolve());
+  const getAll = (store) => db
+    ? new Promise((res, rej) => { const r = db.transaction(store).objectStore(store).getAll(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); })
+    : Promise.resolve([...mem[store].values()]);
+  const getSetting = (key) => db
+    ? new Promise((res) => { const r = db.transaction("settings").objectStore("settings").get(key); r.onsuccess = () => res(r.result); r.onerror = () => res(undefined); })
+    : Promise.resolve(mem.settings.get(key));
+  const setSetting = (key, v) => put("settings", v, key);
+
+  // ---------- state ----------
+  const $ = (id) => document.getElementById(id);
+  const state = { prompts: [], cursor: 0, device: "", speaker: null, current: null,
+                  recorder: null, stream: null, chunks: [], take: null, peak: 0, clipped: 0, startedAt: 0 };
+
+  function show(...ids) {
+    for (const id of ["home", "speakers", "speakerForm", "studio"]) $(id).hidden = !ids.includes(id);
+  }
+
+  // ---------- prompts ----------
+  function parsePrompts(text) {
+    const out = [];
+    text.split(/\r?\n/).forEach((line, i) => {
+      const t = line.trim();
+      if (!t || t.startsWith("#")) return;
+      const tab = t.indexOf("\t");
+      if (tab > 0) out.push({ id: t.slice(0, tab).trim(), text: t.slice(tab + 1).trim() });
+      else out.push({ id: "line" + String(i + 1).padStart(5, "0"), text: t });
+    });
+    return out.filter(p => p.text);
+  }
+  $("promptFile").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const prompts = parsePrompts(await f.text());
+    if (!prompts.length) { $("promptInfo").textContent = "That file has no sentences."; return; }
+    state.prompts = prompts;
+    await setSetting("prompts", prompts);
+    await setSetting("promptsName", f.name);
+    if (state.cursor >= prompts.length) { state.cursor = 0; await setSetting("cursor", 0); }
+    renderPromptInfo(f.name);
+  });
+  // On a website (e.g. GitHub Pages), prompts.txt can sit next to this page.
+  async function fetchSitePrompts() {
+    if (location.protocol === "file:") return null;
+    try {
+      const r = await fetch("prompts.txt", { cache: "no-store" });
+      if (!r.ok) return null;
+      const p = parsePrompts(await r.text());
+      return p.length ? p : null;
+    } catch (e) { return null; }
+  }
+  async function useSitePrompts(prompts) {
+    state.prompts = prompts;
+    await setSetting("prompts", prompts);
+    await setSetting("promptsName", "this site");
+    if (state.cursor >= prompts.length) { state.cursor = 0; await setSetting("cursor", 0); }
+    renderPromptInfo("this site");
+  }
+  $("siteLoad").addEventListener("click", async () => {
+    const p = await fetchSitePrompts();
+    if (p) await useSitePrompts(p);
+    else $("promptInfo").textContent = "No prompts.txt found next to this page.";
+  });
+
+  function renderPromptInfo(name) {
+    const left = state.prompts.length - state.cursor;
+    $("promptInfo").textContent = state.prompts.length
+      ? `${state.prompts.length.toLocaleString()} sentences from ${name || "file"} · ${left.toLocaleString()} not yet used`
+      : "No sentences loaded.";
+    $("newSpeakerBtn").disabled = !state.prompts.length;
+  }
+
+  // ---------- speakers table ----------
+  async function renderSpeakers() {
+    const [speakers, clips] = await Promise.all([getAll("speakers"), getAll("clips")]);
+    const by = new Map();
+    for (const c of clips) {
+      const s = by.get(c.speaker) || { n: 0, sec: 0 };
+      s.n++; s.sec += c.duration; by.set(c.speaker, s);
+    }
+    speakers.sort((a, b) => a.id.localeCompare(b.id));
+    const tbody = $("speakerRows");
+    tbody.replaceChildren();
+    if (!speakers.length) {
+      const tr = document.createElement("tr"), td = document.createElement("td");
+      td.colSpan = 7; td.className = "sub"; td.textContent = "No one recorded yet."; tr.append(td); tbody.append(tr);
+    }
+    for (const s of speakers) {
+      const st = by.get(s.id) || { n: 0, sec: 0 };
+      const tr = document.createElement("tr");
+      for (const v of [s.id, s.gender, s.age, s.area || "—", st.n, (st.sec / 60).toFixed(1), s.consentPublic ? "yes" : "no"]) {
+        const td = document.createElement("td"); td.textContent = v; tr.append(td);
+      }
+      tbody.append(tr);
+    }
+    const totalMin = clips.reduce((a, c) => a + c.duration, 0) / 60;
+    const unexported = clips.filter(c => !c.exported).length;
+    $("totals").textContent = clips.length
+      ? `${clips.length} clips, ${totalMin.toFixed(1)} minutes in total · ${unexported} not yet exported`
+      : "";
+    $("exportBtn").disabled = !clips.length;
+    $("clearBtn").disabled = !clips.some(c => c.exported);
+  }
+
+  // ---------- new speaker ----------
+  async function nextSpeakerCode() {
+    const n = (await getSetting("speakerCounter")) || 0;
+    return `${state.device}-spk${String(n + 1).padStart(3, "0")}`;
+  }
+  $("newSpeakerBtn").addEventListener("click", async () => {
+    for (const id of ["gender", "age"]) $(id).value = "";
+    $("area").value = ""; $("consentResearch").checked = false; $("consentPublic").checked = false;
+    $("nextCode").textContent = await nextSpeakerCode();
+    validateForm(); show("speakerForm");
+  });
+  function validateForm() {
+    $("startBtn").disabled = !($("gender").value && $("age").value && $("consentResearch").checked);
+  }
+  for (const id of ["gender", "age", "consentResearch"]) $(id).addEventListener("change", validateForm);
+  $("cancelSpeaker").addEventListener("click", () => show("home", "speakers"));
+
+  $("startBtn").addEventListener("click", async () => {
+    try {
+      state.stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: true } });
+    } catch (e) {
+      $("homeStatus").textContent = "The microphone is blocked. Allow microphone access for this page in the browser settings, then try again.";
+      show("home", "speakers"); return;
+    }
+    const n = ((await getSetting("speakerCounter")) || 0) + 1;
+    await setSetting("speakerCounter", n);
+    state.speaker = {
+      id: `${state.device}-spk${String(n).padStart(3, "0")}`,
+      gender: $("gender").value, age: $("age").value, area: $("area").value.trim(),
+      consentResearch: true, consentPublic: $("consentPublic").checked,
+      createdAt: new Date().toISOString(), takes: 0,
+    };
+    await put("speakers", state.speaker);
+    setupMeter();
+    show("studio"); loadPrompt();
+  });
+
+  // ---------- level meter ----------
+  let analyser = null, meterBuf = null, raf = 0;
+  function setupMeter() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = ctx.createMediaStreamSource(state.stream);
+      analyser = ctx.createAnalyser(); analyser.fftSize = 2048;
+      meterBuf = new Float32Array(analyser.fftSize);
+      src.connect(analyser);
+      state.audioCtx = ctx;
+    } catch (e) { analyser = null; }
+  }
+  function tickMeter() {
+    if (!analyser) return;
+    analyser.getFloatTimeDomainData(meterBuf);
+    let peak = 0;
+    for (let i = 0; i < meterBuf.length; i++) { const v = Math.abs(meterBuf[i]); if (v > peak) peak = v; }
+    state.peak = Math.max(state.peak, peak);
+    if (peak > 0.99) state.clipped++;
+    $("meterBar").style.width = Math.min(100, peak * 100) + "%";
+    raf = requestAnimationFrame(tickMeter);
+  }
+
+  // ---------- recording ----------
+  function pickMime() {
+    for (const m of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"]) {
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) return m;
+    }
+    return "";
+  }
+  const extFor = (mime) => mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "webm";
+
+  function loadPrompt() {
+    if (state.cursor >= state.prompts.length) {
+      $("promptText").textContent = "All sentences have been used. Load a new prompts file.";
+      setButtons("finished"); return;
+    }
+    state.current = state.prompts[state.cursor];
+    state.take = null;
+    $("promptText").textContent = state.current.text;
+    $("playback").hidden = true; $("playback").removeAttribute("src");
+    $("studioStatus").textContent = ""; $("studioStatus").className = "status";
+    $("studioSpeaker").textContent = `${state.speaker.id} · ${state.speaker.gender}, ${state.speaker.age}`;
+    $("studioCount").textContent = `${state.speaker.takes} kept · sentence ${state.cursor + 1} of ${state.prompts.length}`;
+    setButtons("ready");
+  }
+  function setButtons(mode) {
+    const rec = mode === "recording";
+    $("recBtn").textContent = rec ? "Stop" : "Record";
+    $("recBtn").disabled = mode === "finished";
+    $("keepBtn").disabled = mode !== "review";
+    $("redoBtn").disabled = mode !== "review";
+    $("skipBtn").disabled = rec || mode === "finished";
+    $("doneBtn").disabled = rec;
+  }
+
+  function startRec() {
+    const mime = pickMime();
+    let rec;
+    try { rec = mime ? new MediaRecorder(state.stream, { mimeType: mime }) : new MediaRecorder(state.stream); }
+    catch (e) { $("studioStatus").textContent = "This browser can't record audio. Use a recent Chrome, Edge or Safari."; return; }
+    state.recorder = rec; state.chunks = []; state.peak = 0; state.clipped = 0;
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) state.chunks.push(e.data); };
+    rec.onstop = onStopped;
+    rec.start();
+    state.startedAt = performance.now();
+    if (state.audioCtx && state.audioCtx.state === "suspended") state.audioCtx.resume();
+    tickMeter();
+    $("studioStatus").textContent = "Recording… read the sentence, then press Stop.";
+    $("studioStatus").className = "status rec";
+    setButtons("recording");
+  }
+  function stopRec() { if (state.recorder && state.recorder.state === "recording") state.recorder.stop(); }
+
+  function onStopped() {
+    cancelAnimationFrame(raf); $("meterBar").style.width = "0";
+    const duration = (performance.now() - state.startedAt) / 1000;
+    const mime = state.recorder.mimeType || "audio/webm";
+    const blob = new Blob(state.chunks, { type: mime });
+    state.take = { blob, mime, duration };
+    const pb = $("playback");
+    if (pb.src) URL.revokeObjectURL(pb.src);
+    pb.src = URL.createObjectURL(blob); pb.hidden = false;
+
+    const problems = [];
+    if (duration < 1) problems.push("very short");
+    if (duration > 30) problems.push("over 30 seconds");
+    if (analyser && state.peak < 0.05) problems.push("very quiet: move the phone closer");
+    if (analyser && state.clipped > 3) problems.push("too loud and distorted: move the phone a little away");
+    const st = $("studioStatus");
+    if (problems.length) {
+      st.textContent = `Check this take: ${problems.join("; ")}. Listen back, and record again if needed.`;
+      st.className = "status warn";
+    } else {
+      st.textContent = `${duration.toFixed(1)} s recorded. Listen back if you like, then keep it or record again.`;
+      st.className = "status";
+    }
+    setButtons("review");
+  }
+
+  async function keep() {
+    if (!state.take) return;
+    state.speaker.takes++;
+    const n = String(state.speaker.takes).padStart(4, "0");
+    const clip = {
+      id: `${state.speaker.id}_${n}`, speaker: state.speaker.id, promptId: state.current.id,
+      text: state.current.text, blob: state.take.blob, mime: state.take.mime,
+      duration: Math.round(state.take.duration * 100) / 100, createdAt: new Date().toISOString(), exported: false,
+    };
+    try { await put("clips", clip); } catch (e) {
+      $("studioStatus").textContent = "Couldn't save that clip (storage full?). Export now, then delete exported recordings.";
+      $("studioStatus").className = "status warn"; state.speaker.takes--; return;
+    }
+    await put("speakers", state.speaker);
+    await advance();
+  }
+  async function skip() {
+    const skipped = (await getSetting("skipped")) || [];
+    skipped.push({ promptId: state.current.id, text: state.current.text, speaker: state.speaker.id });
+    await setSetting("skipped", skipped);
+    await advance();
+  }
+  async function advance() {
+    state.cursor++; await setSetting("cursor", state.cursor); loadPrompt();
+  }
+
+  $("recBtn").addEventListener("click", () => state.recorder && state.recorder.state === "recording" ? stopRec() : startRec());
+  $("keepBtn").addEventListener("click", keep);
+  $("redoBtn").addEventListener("click", () => { state.take = null; startRec(); });
+  $("skipBtn").addEventListener("click", skip);
+  $("doneBtn").addEventListener("click", async () => {
+    stopRec();
+    if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+    if (state.audioCtx) state.audioCtx.close().catch(() => {});
+    state.stream = null; state.speaker = null;
+    show("home", "speakers"); renderPromptInfo(await getSetting("promptsName")); renderSpeakers();
+  });
+  document.addEventListener("keydown", (e) => {
+    if ($("studio").hidden || e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+    if (e.code === "Space") { e.preventDefault(); if (!$("recBtn").disabled) $("recBtn").click(); }
+    else if (e.key === "Enter") { e.preventDefault(); if (!$("keepBtn").disabled) $("keepBtn").click(); }
+    else if (e.key === "r" || e.key === "R") { if (!$("redoBtn").disabled) $("redoBtn").click(); }
+    else if (e.key === "s" || e.key === "S") { if (!$("skipBtn").disabled) $("skipBtn").click(); }
+  });
+
+  // ---------- zip export (stored, no compression; audio is already compressed) ----------
+  const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  function crc32(bytes) { let c = 0xFFFFFFFF; for (let i = 0; i < bytes.length; i++) c = CRC[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+  function dosTime(d) {
+    return { time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1),
+             date: ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate() };
+  }
+  async function makeZip(files) {
+    const enc = new TextEncoder(), parts = [], central = [];
+    let offset = 0;
+    const { time, date } = dosTime(new Date());
+    for (const f of files) {
+      const data = f.data instanceof Blob ? new Uint8Array(await f.data.arrayBuffer()) : enc.encode(f.data);
+      const name = enc.encode(f.name), crc = crc32(data);
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+      lh.setUint16(8, 0, true); lh.setUint16(10, time, true); lh.setUint16(12, date, true);
+      lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true);
+      lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+      parts.push(lh, name, data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+      ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true); ch.setUint16(12, time, true); ch.setUint16(14, date, true);
+      ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true);
+      ch.setUint16(28, name.length, true); ch.setUint32(42, offset, true);
+      central.push(ch, name);
+      offset += 30 + name.length + data.length;
+    }
+    const cdSize = central.reduce((a, p) => a + (p.byteLength ?? p.length), 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+    end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+    return new Blob([...parts, ...central, end], { type: "application/zip" });
+  }
+  const tsvCell = (v) => String(v ?? "").replace(/[\t\r\n]+/g, " ");
+
+  $("exportBtn").addEventListener("click", async () => {
+    $("exportBtn").disabled = true; $("homeStatus").textContent = "Building the zip…";
+    try {
+      const [clips, speakers] = await Promise.all([getAll("clips"), getAll("speakers")]);
+      const skipped = (await getSetting("skipped")) || [];
+      const sp = new Map(speakers.map(s => [s.id, s]));
+      clips.sort((a, b) => a.id.localeCompare(b.id));
+      const files = [], meta = ["file\ttext\tspeaker_id\tgender\tsplit\tage_range\tarea\tprompt_id\tduration\tconsent_public\trecorded_at"];
+      for (const c of clips) {
+        const s = sp.get(c.speaker) || {};
+        const file = `audio/${c.speaker}/${c.id}.${extFor(c.mime)}`;
+        files.push({ name: file, data: c.blob });
+        meta.push([file, c.text, c.speaker, s.gender, "train", s.age, s.area, c.promptId, c.duration, s.consentPublic ? "yes" : "no", c.createdAt].map(tsvCell).join("\t"));
+      }
+      const spk = ["speaker_id\tgender\tage_range\tarea\tconsent_research\tconsent_public\tcreated_at"];
+      for (const s of speakers) spk.push([s.id, s.gender, s.age, s.area, "yes", s.consentPublic ? "yes" : "no", s.createdAt].map(tsvCell).join("\t"));
+      const skp = ["prompt_id\ttext\tspeaker_id"].concat(skipped.map(k => [k.promptId, k.text, k.speaker].map(tsvCell).join("\t")));
+      files.push({ name: "metadata.tsv", data: meta.join("\n") + "\n" });
+      files.push({ name: "speakers.tsv", data: spk.join("\n") + "\n" });
+      files.push({ name: "skipped.tsv", data: skp.join("\n") + "\n" });
+      const zip = await makeZip(files);
+      const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(zip); a.download = `wolaita_recordings_${state.device}_${stamp}.zip`;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      for (const c of clips) if (!c.exported) { c.exported = true; await put("clips", c); }
+      $("homeStatus").textContent = `Exported ${clips.length} clips (${(zip.size / 1e6).toFixed(1)} MB). Copy the zip somewhere safe.`;
+    } catch (e) {
+      $("homeStatus").textContent = "Export failed: " + (e && e.message ? e.message : e);
+    }
+    renderSpeakers();
+  });
+
+  $("clearBtn").addEventListener("click", () => { $("clearConfirm").hidden = false; });
+  $("clearNo").addEventListener("click", () => { $("clearConfirm").hidden = true; });
+  $("clearYes").addEventListener("click", async () => {
+    const clips = await getAll("clips");
+    let n = 0;
+    for (const c of clips) if (c.exported) { await del("clips", c.id); n++; }
+    $("clearConfirm").hidden = true;
+    $("homeStatus").textContent = `Deleted ${n} exported recordings from this browser.`;
+    renderSpeakers();
+  });
+
+  // ---------- start ----------
+  (async () => {
+    db = await openDb();
+    if (!db) $("storageWarn").hidden = false;
+    state.device = (await getSetting("device")) || Math.random().toString(36).slice(2, 6);
+    await setSetting("device", state.device);
+    $("deviceTag").textContent = `Device ${state.device}`;
+    state.prompts = (await getSetting("prompts")) || [];
+    state.cursor = (await getSetting("cursor")) || 0;
+    renderPromptInfo(await getSetting("promptsName"));
+    const site = await fetchSitePrompts();
+    if (site) {
+      $("siteLoad").hidden = false;
+      if (!state.prompts.length) await useSitePrompts(site);
+    }
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+    if (!navigator.mediaDevices || !window.MediaRecorder) {
+      $("homeStatus").textContent = "This browser can't record audio. Open the page in a recent Chrome, Edge or Safari.";
+    }
+    renderSpeakers();
+  })();
+})();
+</script>
+</body>
+</html>
